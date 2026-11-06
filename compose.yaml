@@ -1,33 +1,19 @@
 ---
 services:
-  telegramircrr:
-    image: tYiZQMr93eYPp/telegramircrr:latest
-    container_name: telegramircrr
+  metadatarr:
+    image: tYiZQMr93eYPp/metadatarr:latest
+    container_name: metadatarr
     environment:
       TZ: #optional
       TG_APP_API_ID: 
       TG_APP_API_HASH: 
-      IRC_HOST: irc
+      APPRISE_URL: 
+      APPRISE_ERROR_TAG: #optional
       TG_SESSION_PATH: #optional
-      IRC_NICKNAME: #optional
       INDEXER_CONFIG_PATH: #optional
       LOG_LEVEL: #optional
       LOG_PATH: #optional
-      ANNOUNCE_OVERWRITE_FQDN: #optional
-      APPEND_INDEXER_NAME_TO_ANNOUNCE_TITLE: #optional
-      APPRISE_URL: #optional
     volumes:
-      - /path/to/tg_announcer_config:/app/irc
+      - /path/to/metadatarr_config:/app/config
       - /path/to/log_path:/app/logs/app.log # optional
     restart: unless-stopped
-
-  irc:
-    image: inspircd/inspircd-docker:latest
-    container_name: irc
-    environment:
-      TZ: ${TZ}
-      INSP_NET_SUFFIX: "local.server"
-      INSP_NET_NAME: "Local"
-      INSP_SERVER_NAME: "irc.local.server"
-      INSP_ADMIN_NAME: "admin"
-    restart: on-failure

@@ -67,8 +67,8 @@ jobs:
           context: .
           push: true
           tags: |
-            ${{ secrets.DOCKER_HUB_USERNAME }}/telegramircrr:${{ steps.version.outputs.version }}
-            ${{ secrets.DOCKER_HUB_USERNAME }}/telegramircrr:latest
+            ${{ secrets.DOCKER_HUB_USERNAME }}/metadatarr:${{ steps.version.outputs.version }}
+            ${{ secrets.DOCKER_HUB_USERNAME }}/metadatarr:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -78,7 +78,7 @@ jobs:
         with:
           username: ${{ secrets.DOCKER_HUB_USERNAME }}
           password: ${{ secrets.DOCKER_HUB_CI_SECRET }}
-          repository: ${{ secrets.DOCKER_HUB_USERNAME }}/telegramircrr
+          repository: ${{ secrets.DOCKER_HUB_USERNAME }}/metadatarr
 
       - name: Create GitHub Release
         if: steps.check.outputs.changed == 'true'

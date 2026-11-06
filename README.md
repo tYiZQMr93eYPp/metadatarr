@@ -1,19 +1,22 @@
-# Telegram to IRC Announcer
+# metadatarr
 
-Watches configured Telegram channels for new indexer announcements, parses the messages, and forwards them to their corresponding IRC announce channels.
+Watches configured Telegram channels for new indexer announcements, parses the messages, looks up the torrents' metadata in the indexers' UNIT3D API, and publishes it through [Apprise](https://github.com/caronc/apprise-api).
 
 ## How it works
 
 1. Listens for new messages on configured Telegram channels, group topics, and chats via Telethon
 2. Looks up which indexer class handles that channel
 3. Parses the message into structured `AnnounceData`
-4. Sends a formatted announcement to the indexer's IRC channel (e.g. `#myindexer_announce`)
+4. Searches the torrent through the indexer's `/api/torrents/filter` endpoint by title, and picks the match by `id` (or by uploader if the announce has no `id`)
+5. Sends the metadata to `APPRISE_URL`, tagged with the indexer's class name (E.G. `TORRENTEROS`)
+
+If the announce can't be parsed or no torrent matches, the error is logged and an alert is sent to `APPRISE_URL`, tagged with `APPRISE_ERROR_TAG`.
 
 ## Requirements
 
 - Python 3.14+
 - A [Telegram API app](https://my.telegram.org/apps) (API ID + hash)
-- An IRC server
+- An [Apprise API](https://github.com/caronc/apprise-api) instance
 
 ## Configuration
 
@@ -23,15 +26,12 @@ Watches configured Telegram channels for new indexer announcements, parses the m
 |---|---|---|---|---|
 | `TG_APP_API_ID` | Telegram app API ID | true | `None` | `13371337` |
 | `TG_APP_API_HASH` | Telegram app API hash | true | `None` | `oyr2i1ngqk3oc0lhac5cpn0anvuta9qk` |
-| `TG_SESSION_PATH` | Path to the Telethon session file | false | `/app/irc/telethon.session` | `/app/irc/telethon.session` |
-| `IRC_HOST` | IRC server hostname | true | `None` | `irc.example.org` |
-| `IRC_NICKNAME` | IRC bot nickname | false | `irc_bot` | `irc_bot` |
-| `INDEXER_CONFIG_PATH` | Path to the indexer config YAML | false | `/app/irc/config.yaml` | `/app/irc/config.yaml` |
+| `TG_SESSION_PATH` | Path to the Telethon session file | false | `/app/config/telethon.session` | `/app/config/telethon.session` |
+| `INDEXER_CONFIG_PATH` | Path to the indexer config YAML | false | `/app/config/config.yaml` | `/app/config/config.yaml` |
 | `LOG_LEVEL` | The logging level | false | `INFO` | `INFO` |
-| `LOG_PATH` | The log file path | false | `None` | `/app/logs/telegramircrr.log` |
-| `ANNOUNCE_OVERWRITE_FQDN` | Overwrite the [`InfoURL`](https://github.com/autobrr/autobrr/blob/04ba5ccb4bc45f7fdb3f98b343c0b74b2303fb2f/internal/domain/release.go#L50)'s FQDN | false | `None` | `tracker.example.org` |
-| `APPEND_INDEXER_NAME_TO_ANNOUNCE_TITLE` | Appends the indexer's name to the announce's title | false | `false` | `true` |
-| `APPRISE_URL` | [Apprise API](https://github.com/caronc/apprise-api) URL (including the config id) used to notify when an announce lacks `title`, `category`, `size`, `id` or `base_url`. Notification timestamps use `TZ` (UTC if unset) | false | `None` | `apprise://apprise:8000/your-config-id` |
+| `LOG_PATH` | The log file path | false | `None` | `/app/logs/metadatarr.log` |
+| `APPRISE_URL` | [Apprise API](https://appriseit.com/services/apprise_api/) URL (including the config id). The `tags` parameter is added automatically, so don't include it. Notification timestamps use `TZ` (UTC if unset) | true | `None` | `apprise://apprise:8000/your-config-id` |
+| `APPRISE_ERROR_TAG` | Tag of the error alerts | false | `error` | `error` |
 
 ### Indexer config (`config.yaml`)
 
@@ -52,11 +52,11 @@ chat_indexers:
 
 ```
 
-The IRC channel is derived automatically from the class name: `MyIndexer` → `#myindexer_announce`.
+The Apprise tag is derived from the class name: `MyIndexer` → `MyIndexer`.
 
-#### Optional: `indexer_api`
+#### `indexer_api`
 
-When an announce doesn't include the torrent's link/id, an indexer can look it up through its `/api/torrents/filter` endpoint (by title, then by uploader if there are several matches). This requires the indexer's class to support it, and an entry keyed by its class name:
+Every mapped indexer needs an entry keyed by its class name. The app refuses to start otherwise.
 
 ```yaml
 indexer_api:
@@ -66,7 +66,26 @@ indexer_api:
     rate_limit: 15  # optional, max lookups per minute (default: 15)
 ```
 
-If the entry is missing, the lookup is skipped. Lookups beyond `rate_limit` are delayed, not dropped.
+Lookups beyond `rate_limit` are delayed, not dropped.
+
+### Metadata message
+
+One `key: [value]` line per field, sent as plain text. Fields the API doesn't report are left out, and `size` is formatted with binary units:
+
+```
+id: [1234]
+name: [Some Movie 1988 1080p BluRay AAC 2.0 x264]
+release_year: [1988]
+category: [Movies]
+type: [Encode]
+resolution: [1080p]
+size: [4.08 GiB]
+freeleech: [25%]
+double_upload: [false]
+uploader: [AnonymousUploader]
+tmdb_id: [2280]
+details_link: [https://tracker.internal/torrents/13897]
+```
 
 ## Running with Docker
 
@@ -82,24 +101,21 @@ If the entry is missing, the lookup is skipped. Lookups beyond `rate_limit` are 
 ```yaml
 ---
 services:
-  telegramircrr:
-    image: tYiZQMr93eYPp/telegramircrr:latest
-    container_name: telegramircrr
+  metadatarr:
+    image: tYiZQMr93eYPp/metadatarr:latest
+    container_name: metadatarr
     environment:
       TZ: #optional
       TG_APP_API_ID: 
       TG_APP_API_HASH: 
-      IRC_HOST: 
+      APPRISE_URL: 
+      APPRISE_ERROR_TAG: #optional
       TG_SESSION_PATH: #optional
-      IRC_NICKNAME: #optional
       INDEXER_CONFIG_PATH: #optional
       LOG_LEVEL: #optional
       LOG_PATH: #optional
-      ANNOUNCE_OVERWRITE_FQDN: #optional
-      APPEND_INDEXER_NAME_TO_ANNOUNCE_TITLE: #optional
-      APPRISE_URL: #optional
     volumes:
-      - /path/to/tg_announcer_config:/app/irc
+      - /path/to/metadatarr_config:/app/config
       - /path/to/log_path:/app/logs/app.log # optional
     restart: unless-stopped
 ```
@@ -108,40 +124,31 @@ services:
 
 ```bash
 docker run -d \
-  --name telegramircrr \
+  --name metadatarr \
   -e TZ= `#optional` \
   -e TG_APP_API_ID= \
   -e TG_APP_API_HASH= \
-  -e IRC_HOST= \
+  -e APPRISE_URL= \
+  -e APPRISE_ERROR_TAG= `#optional` \
   -e TG_SESSION_PATH= `#optional` \
-  -e IRC_NICKNAME= `#optional` \
   -e INDEXER_CONFIG_PATH= `#optional` \
   -e LOG_LEVEL= `#optional` \
   -e LOG_PATH= `#optional` \
-  -e ANNOUNCE_OVERWRITE_FQDN= `#optional` \
-  -e APPEND_INDEXER_NAME_TO_ANNOUNCE_TITLE= `#optional` \
-  -e APPRISE_URL= `#optional` \
-  -v /path/to/tg_announcer_config:/app/irc \
+  -v /path/to/metadatarr_config:/app/config \
   -v /path/to/log_path:/app/logs/app.log `#optional` \
-  tYiZQMr93eYPp/telegramircrr:latest
+  tYiZQMr93eYPp/metadatarr:latest
 ```
 
 ## Included indexers
 
 | Indexer List |
 |---|
-| `HDZero` |
+| `HDZERO` |
 | `EMUWAREZ` |
 | `NOBS` |
-| `Torrentland` |
 | `ParabellumHD` |
 | `Milnueve` |
-
-## Want to add your indexer?
-
-1. Open an [issue](https://github.com/tYiZQMr93eYPp/telegramircrr/issues/new?template=indexer-integration-request.md) using the [Indexer Integration Request template](https://github.com/tYiZQMr93eYPp/telegramircrr/issues/new?template=indexer-integration-request.md).
-2. Follow the instructions in it.
-3. Submit the issue.
+| `TORRENTEROS` |
 
 ## Project structure
 
@@ -150,12 +157,14 @@ src/
   main.py              # Entry point
   indexers/            # One file per indexer, filename = class name lowercase
     myindexer.py
+  clients/
+    unit3d.py          # UNIT3D API client (torrent lookup)
   models/
-    announce_data.py    # Parsed announce data + IRC send logic
-  irc_bot/
-    ircbot.py          # IRC bot wrapper
-    utils.py           # IRC channel name helper
+    announce_data.py   # Parsed announce data
+    torrent.py         # Torrent metadata returned by the UNIT3D API
+  notifications/
+    apprise_notifier.py  # Metadata and error notifications
   mappers/
-    indexer_mapper.py  # Loads channel → indexer mapping from config.yaml
+    indexer_mapper.py  # Loads channel → indexer mapping and API settings from config.yaml
 config.yaml            # Indexer mappings
 ```

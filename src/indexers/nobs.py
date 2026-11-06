@@ -34,8 +34,6 @@ class NOBS:
                 data["id"] = re.search(r"/torrents/(\d+)", url).group(1)
                 break
 
-        data["indexer"] = "NOBS"
-
         obj = AnnounceData(**data, normalized_message=message)
         logger.debug("Parsed data: {}", vars(obj))
 

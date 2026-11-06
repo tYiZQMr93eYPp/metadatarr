@@ -2,26 +2,22 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-
-class TorrentMeta(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-
-    poster: str | None = None
-    genres: str | None = None
+# UNIT3D may report `0` for an id it doesn't have
+_ZERO_IS_NULL = ("tmdb_id", "imdb_id", "tvdb_id", "mal_id", "igdb_id",
+                 "category_id", "type_id", "resolution_id", "distributor_id", "region_id")
 
 
 class TorrentAttributes(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
-    meta: TorrentMeta = Field(default_factory=TorrentMeta)
     name: str | None = None
     release_year: int | None = None
     category: str | None = None
     type: str | None = None
     resolution: str | None = None
-    description: str | None = None
-    size: int | None = None
-    folder: str | None = None
+    distributor: str | None = None
+    region: str | None = None
+    size: int | None = None  # bytes
     freeleech: str | None = None
     double_upload: bool | None = None
     refundable: bool | None = None
@@ -29,9 +25,6 @@ class TorrentAttributes(BaseModel):
     featured: bool | None = None
     personal_release: bool | None = None
     uploader: str | None = None
-    seeders: int | None = None
-    leechers: int | None = None
-    times_completed: int | None = None
     tmdb_id: int | None = None
     imdb_id: int | None = None
     tvdb_id: int | None = None
@@ -42,10 +35,15 @@ class TorrentAttributes(BaseModel):
     category_id: int | None = None
     type_id: int | None = None
     resolution_id: int | None = None
+    distributor_id: int | None = None
+    region_id: int | None = None
     created_at: datetime | None = None
     details_link: str | None = None
-    download_link: str | None = None
-    magnet_link: str | None = None
+
+    @field_validator(*_ZERO_IS_NULL, mode="before")
+    @classmethod
+    def _zero_to_none(cls, value: object) -> object:
+        return None if value in (0, "0") else value
 
 
 class Torrent(BaseModel):

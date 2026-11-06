@@ -34,13 +34,6 @@ class TORRENTEROS:
                 data["id"] = re.search(r"/torrents/(\d+)", url).group(1)
                 break
 
-        # Append resolution to the title, as the indexer may announce "FULLHD" instead of "1080p".
-        if data["title"]:
-            resolution = re.search(r"Resoluci.n:\*\*\s#?(.+?)(?:\n|$)", message)
-            data["title"] = "{} (Resolution: {})".format(data["title"], resolution.group(1) if resolution else "")
-
-        data["indexer"] = "TORRENTEROS"
-
         obj = AnnounceData(**data, normalized_message=message)
         logger.debug("Parsed data: {}", vars(obj))
 
