@@ -7,13 +7,9 @@ from telethon import events
 
 
 _FIELDS = {
-    "title": r"🎬\s\**(.+?)(?:\*|\n|$)",
-    "category": r"Categor.a:.*?#(.+?)(?:\n|$)",
-    "size": r"Tama.o:.*?\s(.+?)(?:\n|$)",
-    "uploader": r"Subido\spor:.*?#(.+?)(?:\n|$)",
-    "freeleech": r"🎁.*?(\d+?)\s?%\sFree",
-    "featured": r"(DESTACADO)",
-    # EMUWAREZ doesn't announce the `Double Upload`, and `Refundable` values
+    "title": r"^📺\s\**(.+?)(?:\*|\n|$)",
+    "category": r"📂\s\**Category:.*?\s(.+?)(?:\n|$)",
+    "size": r"💾\s\**Size:.*?\s(.+?)(?:\n|$)",
 }
 
 
