@@ -3,29 +3,22 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 from loguru import logger
-from irc_bot.utils import irc_channel_for_indexer
 from telethon import TelegramClient, events, custom
-from irc_bot.ircbot import IRCBot
 from log_config import LogConfig
 from mappers.indexer_mapper import IndexerMapper
-from models.announce_data import AnnounceData
-from notifications.apprise_notifier import notify_missing_fields
+from notifications.apprise_notifier import ensure_configured, notify_error, notify_metadata
 
 
 load_dotenv()
 LogConfig().configure()
+ensure_configured()
 
-telethon_session = Path(os.getenv("TG_SESSION_PATH", "/app/irc/telethon.session"))
+telethon_session = Path(os.getenv("TG_SESSION_PATH", "/app/config/telethon.session"))
 api_id = int(os.getenv("TG_APP_API_ID"))
 api_hash = os.getenv("TG_APP_API_HASH")
 client = TelegramClient(telethon_session, api_id, api_hash)
 
-indexer_mapper = IndexerMapper(os.getenv("INDEXER_CONFIG_PATH", "/app/irc/config.yaml"))
-irc_bot = IRCBot(
-    os.getenv("IRC_HOST"),
-    os.getenv("IRC_NICKNAME", "irc_bot"),
-    [irc_channel_for_indexer(indexer) for indexer in indexer_mapper.indexers()]
-)
+indexer_mapper = IndexerMapper(os.getenv("INDEXER_CONFIG_PATH", "/app/config/config.yaml"))
 
 
 @client.on(events.NewMessage)
@@ -62,20 +55,26 @@ async def read_messages(event: events.NewMessage.Event):
     logger.debug("Indexer matched: {}", indexer)
     logger.debug("reply_markup | indexer={} | msg_id={} | {}", indexer.__name__, message_ent.id,
                 message_ent.reply_markup.to_dict() if message_ent.reply_markup else None)
-    api = indexer_mapper.api(indexer)
-    parse_event = indexer().parse_event
-    # parse_event does HTTP call blocking, so it runs off the event loop
-    if api:
-        data: AnnounceData = await asyncio.to_thread(parse_event, event, api=api)
-    else:
-        data = await asyncio.to_thread(parse_event, event)
+
+    # The parser and the API lookup run off the event loop, as the latter does blocking HTTP calls
+    data = await asyncio.to_thread(indexer().parse_event, event)
 
     missing = data.missing_fields()
     if missing:
         logger.error("Missing fields {} | indexer={} | msg_id={}", missing, indexer.__name__, message_ent.id)
-        await asyncio.to_thread(notify_missing_fields, indexer.__name__, data, missing, event)
+        reason = "Missing fields: {}".format(", ".join("`{}`".format(m) for m in missing))
+        await asyncio.to_thread(notify_error, indexer.__name__, data, reason, event)
+        return
 
-    data.send_data_to_irc(indexer, irc_bot)
+    torrent = await asyncio.to_thread(indexer_mapper.api(indexer).find_torrent, data)
+    if torrent is None:
+        logger.error("No matching torrent found | indexer={} | msg_id={} | title={!r} | id={}",
+                     indexer.__name__, message_ent.id, data.title, data.id)
+        await asyncio.to_thread(notify_error, indexer.__name__, data, "No matching torrent found", event)
+        return
+
+    logger.debug("Torrent resolved through the API: {}", torrent)
+    await asyncio.to_thread(notify_metadata, indexer.__name__, torrent)
 
 
 if __name__ == "__main__":

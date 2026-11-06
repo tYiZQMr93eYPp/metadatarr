@@ -6,6 +6,8 @@ from dataclasses import dataclass, field
 import requests
 from loguru import logger
 from pydantic import ValidationError
+
+from models.announce_data import AnnounceData
 from models.torrent import Torrent
 
 DEFAULT_RATE_LIMIT = 15  # lookups per minute
@@ -22,8 +24,21 @@ def _is_retryable(error: Exception) -> bool:
     return isinstance(error, (requests.RequestException, ValueError))
 
 
+def _select_match(results: list[dict], announce: AnnounceData) -> dict | None:
+    """Picks the result for `announce`: by `id` if announced, otherwise by uploader, otherwise the newest."""
+    if announce.id:
+        return next((r for r in results if str(r.get("id")) == announce.id), None)
+    if announce.uploader:
+        wanted = announce.uploader.strip().casefold()
+        for r in results:
+            if str((r.get("attributes") or {}).get("uploader") or "").strip().casefold() == wanted:
+                return r
+    # The uploader may be announced differently than the API reports it (E.G. `Anónimo` vs `Anonymous`)
+    return results[0]
+
+
 @dataclass(frozen=True)
-class IndexerApi:
+class Unit3dClient:
     """Access to an indexer's `/api/torrents/filter` endpoint (UNIT3D)."""
 
     url: str  # scheme + fqdn, e.g. `https://tracker.example.org`
@@ -46,9 +61,8 @@ class IndexerApi:
             logger.info("Rate limit reached for {}, delaying the lookup by {:.0f}s", self.url, delay)
             time.sleep(delay)
 
-    def find_torrent(self, title: str, uploader: str | None = None) -> Torrent | None:
-        """Returns the matching torrent named `title`, or None if it can't be determined."""
-        body = None
+    def _filter_by_name(self, title: str) -> list[dict] | None:
+        """Returns the raw results of a name search (newest first), or None if the request failed."""
         for attempt in range(1, _MAX_ATTEMPTS + 1):
             self._wait_for_slot()
             try:
@@ -60,7 +74,7 @@ class IndexerApi:
                 )
                 response.raise_for_status()
                 body = response.json()
-                break
+                return (body.get("data") if isinstance(body, dict) else None) or []
             except (requests.RequestException, ValueError) as e:
                 if attempt == _MAX_ATTEMPTS or not _is_retryable(e):
                     logger.warning("Torrent lookup failed for {!r}: {}", title, e)
@@ -71,25 +85,27 @@ class IndexerApi:
                     title, attempt, _MAX_ATTEMPTS, e, delay,
                 )
                 time.sleep(delay)
+        return None
 
-        if body is None:
+    def find_torrent(self, announce: AnnounceData) -> Torrent | None:
+        """Returns the torrent that `announce` refers to, or None if it can't be determined."""
+        if not announce.title:
             return None
 
-        results = (body.get("data") if isinstance(body, dict) else None) or []
-        logger.debug("Torrent lookup for {!r} returned {} result(s)", title, len(results))
+        results = self._filter_by_name(announce.title)
+        if results is None:
+            return None
+        logger.debug("Torrent lookup for {!r} returned {} result(s)", announce.title, len(results))
         if not results:
             return None
 
-        match = results[0]
-        if len(results) > 1 and uploader:
-            wanted = uploader.strip().casefold()
-            match = next(
-                (r for r in results if str((r.get("attributes") or {}).get("uploader") or "").strip().casefold() == wanted),
-                match,
-            )
+        match = _select_match(results, announce)
+        if match is None:
+            logger.warning("Torrent lookup for {!r}: none of the {} result(s) has id {}", announce.title, len(results), announce.id)
+            return None
 
         try:
             return Torrent.model_validate(match)
         except ValidationError as e:
-            logger.warning("Torrent lookup for {!r} returned an invalid match: {}", title, e)
+            logger.warning("Torrent lookup for {!r} returned an invalid match: {}", announce.title, e)
             return None
