@@ -1,8 +1,5 @@
 from dataclasses import dataclass
 
-# Without a title, the torrent can't be looked up through the indexer's API
-_REQUIRED_FIELDS = ("title",)
-
 
 @dataclass
 class AnnounceData:
@@ -19,4 +16,5 @@ class AnnounceData:
     normalized_message: str | None = None
 
     def missing_fields(self) -> list[str]:
-        return [name for name in _REQUIRED_FIELDS if not getattr(self, name)]
+        # Without a title or an id, the torrent can't be looked up through the indexer's API
+        return [] if self.title or self.id else ["title or id"]
