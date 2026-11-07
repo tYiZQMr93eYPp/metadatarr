@@ -58,10 +58,77 @@ def test_find_torrent_matches_by_announced_id(monkeypatch, client):
     assert client.find_torrent(AnnounceData(title="T", id="2", uploader="a")).id == "2"
 
 
-def test_find_torrent_fails_when_the_announced_id_is_not_in_the_results(monkeypatch, client):
-    monkeypatch.setattr(unit3d.requests, "get", lambda *args, **kwargs: _response({"data": [_result("3", "a")]}))
+def test_find_torrent_with_unknown_id_falls_back_to_the_other_criteria(monkeypatch, client):
+    results = [_result("3", "a"), _result("2", "b")]
+    monkeypatch.setattr(unit3d.requests, "get", lambda *args, **kwargs: _response({"data": results}))
 
-    assert client.find_torrent(AnnounceData(title="T", id="2")) is None
+    assert client.find_torrent(AnnounceData(title="T", id="9", uploader="b")).id == "2"
+    assert client.find_torrent(AnnounceData(title="T", id="9")).id == "3"
+
+
+def _fake_api(monkeypatch, by_name: dict[str, list[dict]] | None = None, name_by_id: dict[str, str] | None = None):
+    """Fakes the API; returns the requests made, as `name:<searched name>` and `id:<fetched id>`."""
+    made = []
+
+    def get(url, params=None, **kwargs):
+        if url.endswith("/api/torrents/filter"):
+            made.append(f"name:{params['name']}")
+            return _response({"data": (by_name or {}).get(params["name"], [])})
+        id = url.rsplit("/", 1)[1]
+        made.append(f"id:{id}")
+        if id not in (name_by_id or {}):
+            def raise_for_status():
+                raise requests.HTTPError(response=SimpleNamespace(status_code=404))
+            return SimpleNamespace(raise_for_status=raise_for_status)
+        return _response({"type": "torrent", "id": id, "attributes": {"name": name_by_id[id]}})
+
+    monkeypatch.setattr(unit3d.requests, "get", get)
+    return made
+
+
+def test_find_torrent_without_results_looks_among_the_latest_by_first_word(monkeypatch, client):
+    latest = [_result("3", "a"), _result("2", "b"), _result("1", "c")]
+    made = _fake_api(monkeypatch, {"Alpha": latest})
+
+    assert client.find_torrent(AnnounceData(title="Alpha: Typo S01E01", uploader="b")).id == "2"
+    assert made == ["name:Alpha: Typo S01E01", "name:Alpha"]
+
+
+def test_find_torrent_among_the_latest_never_assumes_the_newest(monkeypatch, client):
+    made = _fake_api(monkeypatch, {"Alpha": [_result("3", "a"), _result("2", "b")]})
+
+    assert client.find_torrent(AnnounceData(title="Alpha Typo", uploader="c")) is None
+    assert made == ["name:Alpha Typo", "name:Alpha"]
+
+
+def test_find_torrent_with_id_and_no_results_searches_by_its_current_name(monkeypatch, client):
+    made = _fake_api(
+        monkeypatch,
+        {"Alpha Real": [_result("3", "a"), _result("2", "b")]},
+        {"2": "Alpha Real"},
+    )
+
+    assert client.find_torrent(AnnounceData(title="Alpha Typo", id="2")).id == "2"
+    assert made == ["name:Alpha Typo", "id:2", "name:Alpha Real"]
+
+
+def test_find_torrent_without_title_searches_by_the_current_name_of_its_id(monkeypatch, client):
+    made = _fake_api(monkeypatch, {"Alpha Real": [_result("2", "b")]}, {"2": "Alpha Real"})
+
+    assert client.find_torrent(AnnounceData(id="2")).id == "2"
+    assert made == ["id:2", "name:Alpha Real"]
+
+
+@pytest.mark.parametrize("name_by_id, by_name, expected", [
+    ({}, {}, ["name:Alpha Typo", "id:2"]),  # the id doesn't exist (404, not retried)
+    ({"2": "Alpha Real"}, {}, ["name:Alpha Typo", "id:2", "name:Alpha Real"]),
+    ({"2": "Alpha Real"}, {"Alpha Real": [_result("3", "a")]}, ["name:Alpha Typo", "id:2", "name:Alpha Real"]),
+])
+def test_find_torrent_with_id_gives_up_when_it_cant_be_found(monkeypatch, client, name_by_id, by_name, expected):
+    made = _fake_api(monkeypatch, by_name, name_by_id)
+
+    assert client.find_torrent(AnnounceData(title="Alpha Typo", id="2")) is None
+    assert made == expected
 
 
 @pytest.mark.parametrize("uploader, expected", [("  UPLOADER ", "2"), ("Anónimo", "3")])
