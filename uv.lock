@@ -211,7 +211,7 @@ wheels = [
 
 [[package]]
 name = "metadatarr"
-version = "0.1.3a0"
+version = "0.1.4a0"
 source = { editable = "." }
 dependencies = [
     { name = "apprise" },
