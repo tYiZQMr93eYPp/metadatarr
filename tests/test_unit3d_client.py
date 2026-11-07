@@ -72,6 +72,18 @@ def test_find_torrent_without_id_prefers_uploader_then_newest(monkeypatch, clien
     assert client.find_torrent(AnnounceData(title="T", uploader=uploader)).id == expected
 
 
+def test_find_torrent_without_id_prefers_results_named_like_the_title(monkeypatch, client):
+    results = [
+        {"id": "3", "attributes": {"name": "T 1080p", "uploader": "a"}},
+        {"id": "2", "attributes": {"name": " t ", "uploader": "b"}},
+        {"id": "1", "attributes": {"name": "T", "uploader": "a"}},
+    ]
+    monkeypatch.setattr(unit3d.requests, "get", lambda *args, **kwargs: _response({"data": results}))
+
+    assert client.find_torrent(AnnounceData(title="T")).id == "2"
+    assert client.find_torrent(AnnounceData(title="T", uploader="a")).id == "1"
+
+
 def test_find_torrent_without_results(monkeypatch, client):
     monkeypatch.setattr(unit3d.requests, "get", lambda *args, **kwargs: _response({"data": []}))
 
