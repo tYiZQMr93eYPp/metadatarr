@@ -5,6 +5,8 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 # UNIT3D may report `0` for an id it doesn't have
 _ZERO_IS_NULL = ("tmdb_id", "imdb_id", "tvdb_id", "mal_id", "igdb_id",
                  "category_id", "type_id", "resolution_id", "distributor_id", "region_id")
+# Optional text labels normalised to "" when missing or null
+_NONE_IS_EMPTY = ("resolution",)
 
 
 class TorrentAttributes(BaseModel):
@@ -14,7 +16,7 @@ class TorrentAttributes(BaseModel):
     release_year: int | None = None
     category: str | None = None
     type: str | None = None
-    resolution: str | None = None
+    resolution: str = ""
     distributor: str | None = None
     region: str | None = None
     size: int | None = None  # bytes
@@ -44,6 +46,11 @@ class TorrentAttributes(BaseModel):
     @classmethod
     def _zero_to_none(cls, value: object) -> object:
         return None if value in (0, "0") else value
+
+    @field_validator(*_NONE_IS_EMPTY, mode="before")
+    @classmethod
+    def _none_to_empty(cls, value: object) -> object:
+        return "" if value is None else value
 
 
 class Torrent(BaseModel):
