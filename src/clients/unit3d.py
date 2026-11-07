@@ -25,9 +25,15 @@ def _is_retryable(error: Exception) -> bool:
 
 
 def _select_match(results: list[dict], announce: AnnounceData) -> dict | None:
-    """Picks the result for `announce`: by `id` if announced, otherwise by uploader, otherwise the newest."""
+    """Picks the result for `announce`: by `id` if announced, otherwise among those named like the title (or all
+    results if none is), by uploader, otherwise the newest."""
     if announce.id:
         return next((r for r in results if str(r.get("id")) == announce.id), None)
+    if announce.title:
+        title = announce.title.strip().casefold()
+        results = [
+            r for r in results if str((r.get("attributes") or {}).get("name") or "").strip().casefold() == title
+        ] or results
     if announce.uploader:
         wanted = announce.uploader.strip().casefold()
         for r in results:
