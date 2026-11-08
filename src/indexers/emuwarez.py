@@ -10,6 +10,8 @@ _FIELDS = {
     "title": r"^(?:📺|🎬|🎵|💻|🎮|📚|🔞|📦)\s\**(.+?)(?:\*|\n|$)",
     "category": r"📂\s\**Category:.*?\s(.+?)(?:\n|$)",
     "size": r"💾\s\**Size:.*?\s(.+?)(?:\n|$)",
+    "base_url": r"(https?://\S+/torrents/\d+)",
+    "id": r"https?://\S+/torrents/(\d+)",
 }
 
 
@@ -25,12 +27,6 @@ class EMUWAREZ:
         logger.debug("Normalized message: {!r}", message)
         data = {key: _get(pat, message) for key, pat in _FIELDS.items()}
         logger.debug("Parsed fields: {}", data)
-
-        for url in button_urls(event.message):
-            if "torrents" in url and "download" not in url:
-                data["base_url"] = url
-                data["id"] = re.search(r"/torrents/(\d+)", url).group(1)
-                break
 
         obj = AnnounceData(**data, normalized_message=message)
         logger.debug("Parsed data: {}", vars(obj))
