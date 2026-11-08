@@ -26,6 +26,19 @@ def _is_retryable(error: Exception) -> bool:
     return isinstance(error, (requests.RequestException, ValueError))
 
 
+_MIN_TITLE_SCORE = 0.6  # token overlap below which a name isn't considered similar to the announced title
+
+
+def _tokens(text: str) -> set[str]:
+    return set(re.findall(r"\w+", text.casefold()))
+
+
+def _title_score(a: str, b: str) -> float:
+    """Jaccard similarity between the tokens of two titles."""
+    ta, tb = _tokens(a), _tokens(b)
+    return len(ta & tb) / len(ta | tb) if ta | tb else 0.0
+
+
 def _by_uploader(results: list[dict], uploader: str | None) -> dict | None:
     if not uploader:
         return None
@@ -37,7 +50,8 @@ def _by_uploader(results: list[dict], uploader: str | None) -> dict | None:
 
 
 def _select_match(results: list[dict], announce: AnnounceData, *, newest_as_last_resort: bool = True) -> dict | None:
-    """Picks the result for `announce`: by `id`, by title, by uploader, otherwise the newest (if allowed)."""
+    """Picks the result for `announce`: by `id`, by exact title, by most similar title, by uploader, otherwise the
+    newest (if allowed)."""
     if announce.id:
         match = next((r for r in results if str(r.get("id")) == announce.id), None)
         if match is not None:
@@ -47,6 +61,12 @@ def _select_match(results: list[dict], announce: AnnounceData, *, newest_as_last
         named = [r for r in results if str((r.get("attributes") or {}).get("name") or "").strip().casefold() == title]
         if named:
             return _by_uploader(named, announce.uploader) or named[0]
+        scored = [(_title_score(title, str((r.get("attributes") or {}).get("name") or "")), r) for r in results]
+        best = max((score for score, _ in scored), default=0.0)
+        if best >= _MIN_TITLE_SCORE:
+            # Ties are acceptable false positives; the uploader (then the newest) breaks them
+            top = [r for score, r in scored if score == best]
+            return _by_uploader(top, announce.uploader) or top[0]
     # The uploader may be announced differently than the API reports it (E.G. `Anónimo` vs `Anonymous`)
     return _by_uploader(results, announce.uploader) or (results[0] if newest_as_last_resort else None)
 

@@ -151,6 +151,27 @@ def test_find_torrent_without_id_prefers_results_named_like_the_title(monkeypatc
     assert client.find_torrent(AnnounceData(title="T", uploader="a")).id == "1"
 
 
+def test_find_torrent_without_id_picks_the_most_similar_name(monkeypatch, client):
+    results = [
+        {"id": "3", "attributes": {"name": "Some Show S01E16 2024 1080p WEB-DL", "uploader": "a"}},
+        {"id": "2", "attributes": {"name": "Some Show S01E15 2024 1080p WEB-DL", "uploader": "a"}},
+    ]
+    monkeypatch.setattr(unit3d.requests, "get", lambda *args, **kwargs: _response({"data": results}))
+
+    assert client.find_torrent(AnnounceData(title="Some Show S01E15 2024 1080p WEB-DL Extra")).id == "2"
+
+
+def test_find_torrent_with_equally_similar_names_picks_by_uploader_then_newest(monkeypatch, client):
+    results = [
+        {"id": "2", "attributes": {"name": "Alpha Beta Gamma", "uploader": "a"}},
+        {"id": "1", "attributes": {"name": "Alpha Beta Delta", "uploader": "b"}},
+    ]
+    monkeypatch.setattr(unit3d.requests, "get", lambda *args, **kwargs: _response({"data": results}))
+
+    assert client.find_torrent(AnnounceData(title="Alpha Beta Gamma Delta", uploader="b")).id == "1"
+    assert client.find_torrent(AnnounceData(title="Alpha Beta Gamma Delta")).id == "2"
+
+
 def test_find_torrent_without_results(monkeypatch, client):
     monkeypatch.setattr(unit3d.requests, "get", lambda *args, **kwargs: _response({"data": []}))
 

@@ -2,7 +2,6 @@ import re
 import unicodedata
 from loguru import logger
 from models.announce_data import AnnounceData
-from utils.telegram_utils import button_urls
 from telethon import events
 
 
