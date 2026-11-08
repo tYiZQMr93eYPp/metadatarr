@@ -97,6 +97,26 @@ def notify_metadata(indexer_name: str, torrent: Torrent) -> None:
           apprise.NotifyFormat.TEXT, indexer_name)
 
 
+def notify_duplicate(indexer_name: str, torrent: Torrent, previous: list[dict]) -> None:
+    """Alerts that `torrent` had already been matched on this indexer. `previous` holds its earlier records."""
+    try:
+        seen = "\n".join(
+            "- `{}` (message {})".format(_format_time(datetime.fromisoformat(p["created_at"])), p["msg_id"])
+            for p in previous[-10:]
+        )
+        sections = [
+            "\u200b\n**Torrent:** {} (id `{}`)".format(torrent.attributes.name or "?", torrent.id),
+            "**Matched before:** {} time(s)".format(len(previous)),
+            "**Previous matches" + (" (last 10)" if len(previous) > 10 else "") + "**\n" + seen,
+        ]
+    except Exception:
+        logger.exception("Building the duplicate notification raised for indexer {}", indexer_name)
+        return
+
+    _send(_ERROR_TAG, "[metadatarr] Duplicate match: {}\n".format(indexer_name), "\n\n".join(sections),
+          apprise.NotifyFormat.MARKDOWN, indexer_name)
+
+
 def notify_error(indexer_name: str, data: AnnounceData, reason: str, event: events.NewMessage.Event) -> None:
     try:
         fields = {k: v for k, v in vars(data).items() if k != "normalized_message"}
