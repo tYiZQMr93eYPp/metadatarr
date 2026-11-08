@@ -12,6 +12,8 @@ Watches configured Telegram channels for new indexer announcements, parses the m
 
 If the announce can't be parsed or no torrent matches, the error is logged and an alert is sent to `APPRISE_URL`, tagged with `APPRISE_ERROR_TAG`.
 
+Every processed announce (raw message, parsed data, reply markup, outcome and the resolved torrent) is stored in a SQLite database for debugging, and purged after `DB_RETENTION_DAYS` (checked at startup and then once a day). After each successful match, a background check looks for earlier matches of the same torrent on the same indexer, and sends a `Duplicate match` alert (tagged with `APPRISE_ERROR_TAG`) if there are any.
+
 ## Requirements
 
 - Python 3.14+
@@ -31,7 +33,9 @@ If the announce can't be parsed or no torrent matches, the error is logged and a
 | `LOG_LEVEL` | The logging level | false | `INFO` | `INFO` |
 | `LOG_PATH` | The log file path | false | `None` | `/app/logs/metadatarr.log` |
 | `APPRISE_URL` | [Apprise API](https://appriseit.com/services/apprise_api/) URL (including the config id). The `tags` parameter is added automatically, so don't include it. Notification timestamps use `TZ` (UTC if unset) | true | `None` | `apprise://apprise:8000/your-config-id` |
-| `APPRISE_ERROR_TAG` | Tag of the error alerts | false | `error` | `error` |
+| `APPRISE_ERROR_TAG` | Tag of the error and duplicate-match alerts | false | `error` | `error` |
+| `DB_PATH` | Path to the SQLite history database | false | `/app/config/metadatarr.db` | `/app/config/metadatarr.db` |
+| `DB_RETENTION_DAYS` | Days the history records are kept before being purged | false | `30` | `30` |
 
 ### Indexer config (`config.yaml`)
 
@@ -67,6 +71,18 @@ indexer_api:
 ```
 
 Lookups beyond `rate_limit` are delayed, not dropped.
+
+#### `logging.level`
+
+Optional. `LOG_LEVEL` is the default level; this section overrides it per module or package, like Spring Boot's `logging.level.*`. Names are the Python module names shown in the logs (E.G. `indexers.emuwarez`, `clients.unit3d`, `telethon`, `__main__`), and the most specific match wins. Each indexer lives in its own module, so this is effectively per class.
+
+```yaml
+logging:
+  level:
+    indexers.emuwarez: DEBUG
+    clients.unit3d: DEBUG
+    telethon: WARNING
+```
 
 ### Metadata message
 
@@ -110,6 +126,8 @@ services:
       TG_APP_API_HASH: 
       APPRISE_URL: 
       APPRISE_ERROR_TAG: #optional
+      DB_PATH: #optional
+      DB_RETENTION_DAYS: #optional
       TG_SESSION_PATH: #optional
       INDEXER_CONFIG_PATH: #optional
       LOG_LEVEL: #optional
@@ -130,6 +148,8 @@ docker run -d \
   -e TG_APP_API_HASH= \
   -e APPRISE_URL= \
   -e APPRISE_ERROR_TAG= `#optional` \
+  -e DB_PATH= `#optional` \
+  -e DB_RETENTION_DAYS= `#optional` \
   -e TG_SESSION_PATH= `#optional` \
   -e INDEXER_CONFIG_PATH= `#optional` \
   -e LOG_LEVEL= `#optional` \
@@ -163,7 +183,9 @@ src/
     announce_data.py   # Parsed announce data
     torrent.py         # Torrent metadata returned by the UNIT3D API
   notifications/
-    apprise_notifier.py  # Metadata and error notifications
+    apprise_notifier.py  # Metadata, error and duplicate-match notifications
+  storage/
+    history_store.py   # SQLite history of processed announces
   mappers/
     indexer_mapper.py  # Loads channel → indexer mapping and API settings from config.yaml
 config.yaml            # Indexer mappings

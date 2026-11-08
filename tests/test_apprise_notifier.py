@@ -120,3 +120,18 @@ def test_failures_do_not_raise(data, torrent, make_event, result):
 
     apprise_notifier.notify_metadata("HDZERO", torrent)
     apprise_notifier.notify_error("NOBS", data, "boom", make_event())
+    apprise_notifier.notify_duplicate("NOBS", torrent, [{"created_at": "2026-11-06T10:00:00+00:00", "msg_id": 1}])
+
+
+def test_duplicate_is_tagged_with_the_error_tag_and_lists_the_previous_matches(torrent):
+    previous = [{"created_at": "2026-11-06T10:00:00+00:00", "msg_id": 5}]
+
+    apprise_notifier.notify_duplicate("NOBS", torrent, previous)
+
+    [notifier] = FakeApprise.instances
+    assert notifier.urls == ["apprises://host/metadatarr?overflow=split&tags=error"]
+    [sent] = notifier.sent
+    assert sent["title"].startswith("[metadatarr] Duplicate match: NOBS")
+    assert "Some Movie 1988 (id `1234`)" in sent["body"]
+    assert "1 time(s)" in sent["body"]
+    assert "`2026-11-06T11:00:00+01:00` (message 5)" in sent["body"]

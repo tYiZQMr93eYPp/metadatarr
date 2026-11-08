@@ -9,6 +9,8 @@ services:
       TG_APP_API_HASH: 
       APPRISE_URL: 
       APPRISE_ERROR_TAG: #optional
+      DB_PATH: #optional
+      DB_RETENTION_DAYS: #optional
       TG_SESSION_PATH: #optional
       INDEXER_CONFIG_PATH: #optional
       LOG_LEVEL: #optional
