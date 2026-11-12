@@ -1,6 +1,6 @@
 [project]
 name = "metadatarr"
-version = "0.1.6-alpha"
+version = "0.1.7-alpha"
 description = "Parses Telegram announcements and publishes the torrents' UNIT3D metadata through Apprise"
 readme = "README.md"
 requires-python = ">=3.14"

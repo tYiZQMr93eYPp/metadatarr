@@ -10,7 +10,7 @@ _FIELDS = {
     "title": r"\*\*\n\n\*\*(.+?)\*\*\n",
     "category": r"Categor.a:\*\*\s#?(.+?)(?:\n|$)",
     "size": r"Tama.o:\*\*\s(.+?)(?:\n|$)",
-    "uploader": r"Subido\spor\s#?(.+?)(?:\n|$)",
+    "uploader": r"Subido\spor\s#?(.+?)(?:__$)",
     # TORRENTEROS doesn't announce the `Double Upload`, `Freeleech`, `Featured`, and `Refundable` values
 }
 
