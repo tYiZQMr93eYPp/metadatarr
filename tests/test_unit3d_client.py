@@ -58,14 +58,6 @@ def test_find_torrent_matches_by_announced_id(monkeypatch, client):
     assert client.find_torrent(AnnounceData(title="T", id="2", uploader="a")).id == "2"
 
 
-def test_find_torrent_with_unknown_id_falls_back_to_the_other_criteria(monkeypatch, client):
-    results = [_result("3", "a"), _result("2", "b")]
-    monkeypatch.setattr(unit3d.requests, "get", lambda *args, **kwargs: _response({"data": results}))
-
-    assert client.find_torrent(AnnounceData(title="T", id="9", uploader="b")).id == "2"
-    assert client.find_torrent(AnnounceData(title="T", id="9")).id == "3"
-
-
 def _fake_api(monkeypatch, by_name: dict[str, list[dict]] | None = None, name_by_id: dict[str, str] | None = None):
     """Fakes the API; returns the requests made, as `name:<searched name>` and `id:<fetched id>`."""
     made = []
@@ -110,6 +102,25 @@ def test_find_torrent_with_id_and_no_results_searches_by_its_current_name(monkey
 
     assert client.find_torrent(AnnounceData(title="Alpha Typo", id="2")).id == "2"
     assert made == ["name:Alpha Typo", "id:2", "name:Alpha Real"]
+
+
+def test_find_torrent_with_id_missing_from_the_results_searches_by_its_current_name(monkeypatch, client):
+    unrelated = [_result("3", "a"), _result("1", "b")]
+    made = _fake_api(
+        monkeypatch,
+        {"Alpha Typo": unrelated, "Alpha Real": [_result("2", "b"), _result("1", "b")]},
+        {"2": "Alpha Real"},
+    )
+
+    assert client.find_torrent(AnnounceData(title="Alpha Typo", id="2", uploader="a")).id == "2"
+    assert made == ["name:Alpha Typo", "id:2", "name:Alpha Real"]
+
+
+def test_find_torrent_with_id_missing_from_the_results_never_assumes_the_newest(monkeypatch, client):
+    made = _fake_api(monkeypatch, {"Alpha Typo": [_result("3", "a"), _result("1", "b")]})
+
+    assert client.find_torrent(AnnounceData(title="Alpha Typo", id="2", uploader="a")) is None
+    assert made == ["name:Alpha Typo", "id:2"]
 
 
 def test_find_torrent_without_title_searches_by_the_current_name_of_its_id(monkeypatch, client):

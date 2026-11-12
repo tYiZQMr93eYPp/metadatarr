@@ -176,9 +176,10 @@ class Unit3dClient:
             return None
         if announce.title:
             logger.debug("Torrent lookup for {!r} returned {} result(s)", announce.title, len(results))
-        if results:
+        if results and (not announce.id or any(str(r.get("id")) == announce.id for r in results)):
             match = _select_match(results, announce)
         elif announce.id:
+            # The announced id is authoritative, so unrelated results are never guessed from
             match = self._find_by_id(announce)
         else:
             match = self._find_among_recent(announce)
